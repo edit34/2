@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>معالج الفيديو</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 100%; /* استخدام عرض كامل */
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden; /* تحسين تدفق المحتوى */
+        }
+
+        .video-container {
+            width: 100%;
+            position: relative;
+            padding-bottom: 56.25%; /* نسبة 16:9 */
+            margin: 20px 0;
+            background: #000;
+            display: none; /* إخفاء الفيديو */
+        }
+
+        .video-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none; /* إخفاء الفيديو */
+        }
+
+        .upload-btn, .download-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s ease;
+        }
+
+        .download-btn {
+            background-color: #2196F3;
+            display: none;
+        }
+
+        .upload-btn:hover, .download-btn:hover {
+            background-color: #388E3C; /* تغيير لون الخلفية عند التحويم */
+        }
+
+        .progress {
+            display: none;
+            margin: 10px 0;
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.1s ease; /* زيادة السلاسة */
+        }
+
+        #status {
+            margin: 10px 0;
+            color: #666;
+            text-align: center; /* توسيط النص */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center;">معالج الفيديو</h1>
+        <input type="file" id="videoInput" accept="video/*" style="display: none">
+        <button class="upload-btn" onclick="document.getElementById('videoInput').click()">اختر فيديو</button>
+        
+        <div class="video-container">
+            <video id="videoPlayer" controls>
+                متصفحك لا يدعم تشغيل الفيديو.
+            </video>
+        </div>
+        
+        <button id="downloadBtn" class="download-btn">تنزيل الفيديو</button>
+        <div class="progress">
+            <div class="progress-bar"></div>
+        </div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const videoInput = document.getElementById('videoInput');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const progress = document.querySelector('.progress');
+        const progressBar = document.querySelector('.progress-bar');
+        const status = document.getElementById('status');
+
+        videoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                videoPlayer.src = url;
+                videoPlayer.style.display = 'block'; // إظهار الفيديو
+                downloadBtn.style.display = 'block';
+                status.textContent = 'تم تحميل الفيديو بنجاح';
+                document.querySelector('.video-container').style.display = 'block'; // إظهار حاوية الفيديو
+            }
+        });
+
+        downloadBtn.addEventListener('click', async function() {
+            try {
+                status.textContent = 'جاري معالجة الفيديو...';
+                progress.style.display = 'block';
+                progressBar.style.width = '0%';
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const width = videoPlayer.videoWidth;
+                const height = (width * 9) / 16;
+                
+                canvas.width = width;
+                canvas.height = height;
+
+                const stream = canvas.captureStream(30); // 30 FPS
+                const audioTrack = videoPlayer.captureStream().getAudioTracks()[0];
+                if (audioTrack) {
+                    stream.addTrack(audioTrack);
+                }
+
+                const mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'video/webm; codecs=vp8,opus',
+                    videoBitsPerSecond: 2500000
+                });
+
+                const chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'processed-video.webm';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    URL.revokeObjectURL(url);
+                    status.textContent = 'تم تنزيل الفيديو بنجاح';
+                    progress.style.display = 'none';
+                };
+
+                mediaRecorder.start(1000);
+
+                videoPlayer.currentTime = 0;
+                await new Promise(resolve => {
+                    videoPlayer.play();
+                    
+                    const duration = videoPlayer.duration;
+                    const interval = 1000 / 30; // 30 FPS
+                    let currentTime = 0;
+
+                    const intervalId = setInterval(() => {
+                        if (currentTime < duration) {
+                            ctx.drawImage(videoPlayer, 0, 0, width, height);
+                            currentTime += interval / 1000; // زيادة الوقت وفقًا للفاصل الزمني
+                            const progressPercentage = (currentTime / duration) * 100;
+                            progressBar.style.width = progressPercentage + '%';
+                        } else {
+                            clearInterval(intervalId);
+                            mediaRecorder.stop();
+                            videoPlayer.pause();
+                            resolve();
+                        }
+                    }, interval);
+                });
+                
+            } catch (error) {
+                console.error(error);
+                status.textContent = 'حدث خطأ أثناء معالجة الفيديو';
+                progress.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
